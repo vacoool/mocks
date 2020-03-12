@@ -1,4 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using FakeItEasy;
+using FluentAssertions;
 using NUnit.Framework;
 
 namespace MockFramework
@@ -43,11 +47,84 @@ namespace MockFramework
         [SetUp]
         public void SetUp()
         {
-            //thingService = A...
+            thingService = A.Fake<IThingService>();
             thingCache = new ThingCache(thingService);
         }
 
-        //TODO: написать простейший тест, а затем все остальные
-        //Live Template tt работает!
+        [Test]
+        public void TryRead_ExecutedOnce_AfterFirstGetSameThing()
+        {
+            Thing _;
+            thingCache.Get(thingId1).Should().BeNull();
+            A.CallTo(() => thingService.TryRead(thingId1, out _))
+                .MustHaveHappened(Repeated.Exactly.Once);
+        }
+        
+        [Test]
+        public void TryRead_NotExecuted_AfterFirstGetAnotherThing()
+        {
+            Thing _;
+            thingCache.Get(thingId1).Should().BeNull();
+            
+            A.CallTo(() => thingService.TryRead(thingId2, out _))
+                .MustNotHaveHappened();
+        }
+
+        [Test]
+        public void TryRead_ExecutedExactlyOnce_AfterGetMultipleThings()
+        {
+            Thing _;
+            A.CallTo(() => thingService.TryRead(thingId2, out _))
+                .Returns(true).AssignsOutAndRefParameters(thing2);
+            thingCache.Get(thingId2).Should().NotBeNull();
+            thingCache.Get(thingId2).Should().NotBeNull();
+            A.CallTo(() => thingService.TryRead(thingId2, out _)).MustHaveHappened(Repeated.Exactly.Once);
+        }
+        
+                
+        [Test]
+        public void TryRead_ExecutedExactlyTwice_AfterGetMultipleThings()
+        {
+            Thing _;
+            //thingCache.Get(thingId1).Should().BeNull();
+            thingCache.Get(thingId2).Should().BeNull();
+            thingCache.Get(thingId2).Should().BeNull();
+            A.CallTo(() => thingService.TryRead(thingId2, out _)).MustHaveHappened(Repeated.Exactly.Twice);
+        }
+        
+        [Test]
+        public void TryRead_ExecutedOnce_ForEachThing()
+        {
+            Thing _;
+            A.CallTo(() => thingService.TryRead(thingId1, out _))
+                .Returns(true).AssignsOutAndRefParameters(thing1);
+            A.CallTo(() => thingService.TryRead(thingId2, out _))
+                .Returns(true).AssignsOutAndRefParameters(thing2);
+            thingCache.Get(thingId1).Should().NotBeNull();
+            thingCache.Get(thingId2).Should().NotBeNull();
+            A.CallTo(() => thingService.TryRead(thingId2, out _)).MustHaveHappened(Repeated.Exactly.Once);
+            A.CallTo(() => thingService.TryRead(thingId1, out _)).MustHaveHappened(Repeated.Exactly.Once);
+        }
+        
+        [Test]
+        public void TryRead_Throws_OnNullId()
+        {
+            Thing _;
+            A.CallTo(() => thingService.TryRead(null, out _)).Throws<Exception>();
+        }
+        
+        [Test]
+        public void TryRead_CheckCalls()
+        {
+            thingService.TryRead(thingId1, out var _);
+            thingService.TryRead(thingId1, out var _);
+            var calls = Fake.GetCalls(thingService).ToList();
+            calls.Count.ShouldBeEquivalentTo(2);
+            calls[0].Method.Name.ShouldBeEquivalentTo("TryRead");
+            calls[1].Method.Name.ShouldBeEquivalentTo("TryRead");
+        }
+        
+        
+        
     }
 }
