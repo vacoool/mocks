@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using FakeItEasy;
@@ -91,11 +92,50 @@ namespace FileSender
             fileSender = new FileSender(cryptographer, sender, recognizer);
         }
 
+       // [Test]
+        private IEnumerable<File> GenericTest(DateTime dateTime, string format, bool[] recRet, bool[] sendRet, int fileCount)
+        {
+            var document = new Document(file.Name, file.Content, dateTime, format);
+            A.CallTo(() => recognizer.TryRecognize(file, out document))
+                .ReturnsNextFromSequence(recRet);
+            A.CallTo(() => cryptographer.Sign(document.Content, certificate))
+                .Returns(signedContent);
+            A.CallTo(() => sender.TrySend(signedContent))
+                .ReturnsNextFromSequence(sendRet);
+            
+            var files = Enumerable.Repeat(file,fileCount).ToArray();
+            return fileSender.SendFiles(files, certificate).SkippedFiles;
+        }
+
+        private IEnumerable<File> GenericTest(DateTime dateTime, string format, bool recRet, bool sendRet)
+        {
+            return GenericTest(dateTime, format,new []{recRet},new []{sendRet}, 1);
+        }
+        
+        [Test]
         [TestCase("4.0")]
         [TestCase("3.1")]
         public void Send_WhenGoodFormat(string format)
         {
-            var document = new Document(file.Name, file.Content, DateTime.Now, format);
+            GenericTest(DateTime.Now, format, true, true).Should().BeEmpty();
+        }
+
+        [Test]
+        public void Skip_WhenBadFormat()
+        {
+            GenericTest(DateTime.Now, "2.1", true, true).Should().NotBeEmpty();
+        }
+
+        [Test]
+       //[TestCase(1)]
+        [TestCase(-1)]
+        public void Skip_WhenOlderThanAMonth(int delta)
+        {
+            var dt = DateTime.Now.AddMonths(delta).AddMilliseconds(delta);
+            GenericTest(dt, "3.1", true, true).Should().NotBeEmpty();
+            /*
+            GenericTest(DateTime.Now.Subtract(TimeSpan.FromDays(1000)), "3.1", new []{true}, new []{true}).Should().NotBeEmpty();
+            var document = new Document(file.Name, file.Content, DateTime.Now.Subtract(TimeSpan.FromDays(1000)), "3.1");
             A.CallTo(() => recognizer.TryRecognize(file, out document))
                 .Returns(true);
             A.CallTo(() => cryptographer.Sign(document.Content, certificate))
@@ -104,56 +144,43 @@ namespace FileSender
                 .Returns(true);
 
             fileSender.SendFiles(new[] {file}, certificate)
-                .SkippedFiles.Should().BeEmpty();
+                .SkippedFiles.Should().NotBeEmpty();
+                */
         }
 
         [Test]
-        [Ignore("Not implemented")]
-        public void Skip_WhenBadFormat()
+        [TestCase(1)]
+       // [TestCase(-1)]
+        public void Send_WhenYoungerThanAMonth(int delta)
         {
-            throw new NotImplementedException();
+            var dt = DateTime.Now.AddMonths(-delta).AddSeconds(delta);
+            GenericTest(dt, "3.1", true, true).Should().BeEmpty();
         }
 
         [Test]
-        [Ignore("Not implemented")]
-        public void Skip_WhenOlderThanAMonth()
-        {
-            throw new NotImplementedException();
-        }
-
-        [Test]
-        [Ignore("Not implemented")]
-        public void Send_WhenYoungerThanAMonth()
-        {
-            throw new NotImplementedException();
-        }
-
-        [Test]
-        [Ignore("Not implemented")]
         public void Skip_WhenSendFails()
         {
-            throw new NotImplementedException();
+            GenericTest(DateTime.Now, "3.1", true, false).Should().NotBeEmpty();
         }
 
         [Test]
-        [Ignore("Not implemented")]
         public void Skip_WhenNotRecognized()
         {
-            throw new NotImplementedException();
+            GenericTest(DateTime.Now, "3.1", false, true).Should().NotBeEmpty();
         }
 
         [Test]
-        [Ignore("Not implemented")]
         public void IndependentlySend_WhenSeveralFilesAndSomeAreInvalid()
         {
-            throw new NotImplementedException();
+            GenericTest(DateTime.Now, "3.1", new [] {false, false, true}, new [] {true}, 3)
+                .Count().ShouldBeEquivalentTo(2);
         }
 
         [Test]
-        [Ignore("Not implemented")]
         public void IndependentlySend_WhenSeveralFilesAndSomeCouldNotSend()
         {
-            throw new NotImplementedException();
+            GenericTest(DateTime.Now, "3.1", new [] {true}, new [] {false, true, true}, 3)
+                .Count().ShouldBeEquivalentTo(2);
         }
     }
 }
